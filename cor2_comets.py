@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector
 import glob
 from scipy.ndimage.interpolation import rotate
+from scipy.signal import medfilt
 import os
 import astropy.units as u
 
@@ -31,11 +32,22 @@ def toggle_selector(event):
         print(' RectangleSelector activated.')
         toggle_selector.RS.set_active(True)
 
+# return the angle of rotation of a comet relative to vertical
+# (this is used to rectify all the observations)
 def get_rotation(point1, point2):
     dx = np.abs(point1[0]-point2[0])
     dy = np.abs(point1[1]-point2[1])
     theta = np.arctan(dy/dx)
     return np.degrees(theta)+90.
+
+# Display an image using percentiles for the range
+# e.g. display image with 2nd and 98th percentiles:
+#    tvscl(image, 2, 98)
+def tvscl(input_image, min_pc, max_pc):
+    hmin = np.percentile(input_image, min_pc)
+    hmax = np.percentile(input_image, max_pc)
+    plt.imshow(input_image, vmin=hmin, vmax=hmax)
+
 
 # Adaptive Box Photometry Class
 class ABPhotomPt:
@@ -49,17 +61,17 @@ class ABPhotomPt:
     author="Karl Battams (NRL)"
     
     def date(self):
-        return self.ObjDatetime.strftime('%Y-%m-%d %H:%M:%S')
+        return self.ID.strftime('%Y-%m-%d %H:%M:%S')
         
     def show(self):
-        plt.imshow(self.target)
+        plt.imshow(self.cometIm)
         plt.show(block=True)
         
     def getBkg(self):
-        return np.median(self.backgrounds, axis=0)
+        return np.median(self.bkgIm, axis=0)
 
 # SETUP
-datadir = '/Users/battams/Work/COMETS/PROJECTS/COR2_Comets/PYTHON/testdata/'
+datadir = '/Users/battams/Work/PYTHON/COMET_PROJECTS/testdata/'
 box_width = 9           # Default comet width in pixels
 half_box = np.floor(box_width/2).astype('int')
 num_bkgs = 6            # how many backgrounds to include (excluding self)
@@ -82,12 +94,23 @@ allhdrs = alldata.all_meta()
 imsize = alldata
 # MAY NEED PRE-PROCESSING HERE FOR EASE OF IDENTIFYING COMET
 
-im=alldata[3].data
+im_number=3 # TEMPORARY
+im=alldata[im_number].data
 #r = cv2.selectROI(im)
+
+# Make a running difference image for better comet identification
+view_im = im - medfilt(im,15)
+min_pc = 3      # percentiles for scaling (viewing only)
+max_pc = 99      # percentiles for scaling (viewing only)
+hmin = np.percentile(view_im, min_pc)    
+hmax = np.percentile(view_im, max_pc)
+    
 
 fig, current_ax = plt.subplots()                 # make a new plotting range
 
-plt.imshow(im,cmap=plt.get_cmap('jet'),origin='lower')
+# 
+#plt.imshow(view_im,cmap=plt.get_cmap('jet'),origin='lower',vmin=hmin, vmax=hmax)
+plt.imshow(view_im,origin='lower',vmin=hmin, vmax=hmax)
 
 print("Select bounding box from head to tail")
 
@@ -157,8 +180,6 @@ com_meta = alldata[3].meta
 date_time = alldata[3].date
 
 target_image = rot_im
-
-photPt = ABPhotomPt(date_time, target_image, bkg_images, com_meta, subs_meta)
 
 
 
